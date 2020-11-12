@@ -38,10 +38,10 @@ To get started, please follow these steps.
   $ sudo make
   $ sudo ./deepstream-pose-estimation-app <file-uri> <output-path>
 ```
+5. The final output is stored in 'output-path' as `Pose_Estimation.mp4`
 
-5. If you do not already have a .trt engine generated from the ONNX model you provided to DeepStream, an engine will be created on the first run of the application. Depending upon the system you’re using, this may take anywhere from 4 to 10 minutes.
+NOTE: If you do not already have a .trt engine generated from the ONNX model you provided to DeepStream, an engine will be created on the first run of the application. Depending upon the system you’re using, this may take anywhere from 4 to 10 minutes.
 
-6. The final output is stored in 'output-path' as `Pose_Estimation.mp4`
 
 ## References
 Cao, Zhe, et al. "Realtime multi-person 2d pose estimation using part affinity fields." Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition. 2017.
