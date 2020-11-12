@@ -2,7 +2,21 @@
 
 Human pose estimation is the computer vision task of estimating the configuration (‘the pose’) of the human body by localizing certain key points on a body within a video or a photo. The following application serves as a reference to deploy custom pose estimation models with DeepStream 5.0 using the [TRTPose](https://github.com/NVIDIA-AI-IOT/trt_pose) project as an example. 
 
-<img src="images/input.gif" width="300"/> <img src="images/auxillary.png" width="100"/> <img src="images/output.gif" width="300"/> 
+
+<!--<img src="images/input.gif" width="300"/> <img src="images/auxillary.png" width="100"/> <img src="images/output.gif" width="300"/>-->
+
+<table>
+  <tr>
+    <td>Input Video Source</td>
+     <td></td>
+     <td>Output Video</td>
+  </tr>
+  <tr>
+    <td valign="top"><img src="images/input.gif"></td>
+    <td valign="center"><img src="images/auxillary.png" width="100"></td>
+    <td valign="top"><img src="images/output.gif"></td>
+  </tr>
+ </table>
 
 
 ## Prerequisites
