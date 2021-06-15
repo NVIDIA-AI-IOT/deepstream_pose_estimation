@@ -474,6 +474,16 @@ int main(int argc, char *argv[])
   // Creo algunos elementos mas para la entrada de cámara
   GstElement *camera = NULL, *camera_caps=NULL, *camera_caps2=NULL, *camera_conv=NULL;
 
+// Check for wrong settings FILEIN & CAMERA
+
+#ifdef FILEIN
+#ifdef CAMERA
+  g_print("ERROR. Compilado con entrada FILEIN y CAMERA al mismo tiempo. Se debe elegir uno solo.\n");
+  return -1;
+#endif
+#endif
+
+
 /* Add a transform element for Jetson*/
 #ifdef PLATFORM_TEGRA
   GstElement *transform = NULL;
