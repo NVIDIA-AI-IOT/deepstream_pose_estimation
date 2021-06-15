@@ -1,0 +1,7 @@
+Pose_Estimation.mp4
+*.o
+Doxyfile
+*.mp4
+html/*
+latex/*
+deepstream-pose-estimation-app
