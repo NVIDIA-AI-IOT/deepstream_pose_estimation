@@ -108,7 +108,7 @@ create_display_meta(Vec2D<int> &objects, Vec3D<float> &normalized_peaks, NvDsFra
   NvDsDisplayMeta *dmeta = nvds_acquire_display_meta_from_pool(bmeta);
   nvds_add_display_meta_to_frame(frame_meta, dmeta);
 
-  // Dibujar círculos
+  // Draw circles at peaks
   for (auto &object : objects)
   {
     int C = object.size();
@@ -142,7 +142,7 @@ create_display_meta(Vec2D<int> &objects, Vec3D<float> &normalized_peaks, NvDsFra
       }
     }
 
-    // Esto parece ser para dibujar las líneas para conectar cada esqueleto
+    // Draw lines between peaks
     for (int k = 0; k < K; k++)
     {
       int c_a = topology[k][2];
@@ -188,7 +188,7 @@ pgie_src_pad_buffer_probe(GstPad *pad, GstPadProbeInfo *info,
   NvDsMetaList *l_user = NULL;
   NvDsBatchMeta *batch_meta = gst_buffer_get_nvds_batch_meta(buf);
 
-  // Itero sobre los frames.
+  // Iterate over frames
   // Entiendo que esto es porque pueden venir en batches de mas de 1 frame.
   for (l_frame = batch_meta->frame_meta_list; l_frame != NULL;
        l_frame = l_frame->next)
