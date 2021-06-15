@@ -134,7 +134,7 @@ create_display_meta(Vec2D<int> &objects, Vec3D<float> &normalized_peaks, NvDsFra
         //g_print("xc: %u\n",cparams.xc);
 
         cparams.yc = y;
-        cparams.radius = 8;
+        cparams.radius = 7;
         cparams.circle_color = NvOSD_ColorParams{244, 67, 54, 1};
         cparams.has_bg_color = 1;
         cparams.bg_color = NvOSD_ColorParams{0, 255, 0, 1};
@@ -166,8 +166,8 @@ create_display_meta(Vec2D<int> &objects, Vec3D<float> &normalized_peaks, NvDsFra
         lparams.x2 = x1;
         lparams.y1 = y0;
         lparams.y2 = y1;
-        lparams.line_width = 3;
-        lparams.line_color = NvOSD_ColorParams{0, 255, 0, 1};
+        lparams.line_width = 2;
+        lparams.line_color = NvOSD_ColorParams{0, 0, 255, 1};
         dmeta->num_lines++;
       }
     }
@@ -213,7 +213,7 @@ pgie_src_pad_buffer_probe(GstPad *pad, GstPadProbeInfo *info,
         g_print("Personas: %lu \n", objects.size()); 
         for (int i = 0; i < objects.size(); i++)
         {
-          g_print("Persona %u: ",i);
+          g_print(" Persona %u: ",i);
           int score=0;
           for (int j = 0; j < objects[i].size(); j++)
           {
@@ -237,11 +237,38 @@ pgie_src_pad_buffer_probe(GstPad *pad, GstPadProbeInfo *info,
           //g_print("cara %d \n",cara);
 
           // Chequeo si esta persona tiene cara y 2 manos visibles
+          int cantidad_elementos_cara=0;
+          float altura_total_cara=0;
+          float altura_promedio_cara=0;
+          float altura_promedio_manos=0;
           if (cara >= -2 && objects[i][9]>=0 && objects[i][10]>=0)
           {
-            g_print("Tengo todo lo que necesito para comparar y detectar brazos arriba\n");
-            // prueba git
+            g_print(" Tengo objetos suficientes para comparar y detectar brazos arriba\n");
             // Acá va alguna lógica para determinar alto promedio de elementos cara y alto promedio elementos manos y luego comparar
+
+            // Itero sobre los objetos cara (0 al 4), si está, sumo su altura y lo cuento
+            for (int j = 0; j < 5;j++)
+            {
+              if (objects[i][j]>=0)
+              {
+                cantidad_elementos_cara++;
+                // normalized_peaks[objeto][persona][coordenada, (x y )0 / 1 ]
+                altura_total_cara=altura_total_cara+normalized_peaks[j][i][0];
+              }
+            }
+            g_print(" Hay %d elementos en la cara.\n",cantidad_elementos_cara);
+            // Terminé de iterar sobre los 5 objetos cara, calculo el promedio
+            altura_promedio_cara=altura_total_cara/cantidad_elementos_cara;
+            g_print(" Altura promedio elementos cara %.3f\n",altura_promedio_cara);
+
+            // Si estoy acá dentro, existen los dos elementos mano. Calculo altura promedio manos.
+            altura_promedio_manos=(normalized_peaks[9][i][0]+normalized_peaks[10][i][0])/2;
+            g_print(" Altura promedio elementos mano %.3f\n",altura_promedio_manos);
+          }
+     
+          if (altura_promedio_manos<altura_promedio_cara)
+          {
+             g_print(" BRAZOS ARRIBA!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
           }
 
           // Trato de buscar las coordenadas de un punto (0).
@@ -339,17 +366,17 @@ osd_sink_pad_buffer_probe(GstPad *pad, GstPadProbeInfo *info,
     txt_params->y_offset = 12;
 
     txt_params->font_params.font_name = "Mono";
-    txt_params->font_params.font_size = 10;
+    txt_params->font_params.font_size = 14;
     txt_params->font_params.font_color.red = 1.0;
     txt_params->font_params.font_color.green = 1.0;
     txt_params->font_params.font_color.blue = 1.0;
     txt_params->font_params.font_color.alpha = 1.0;
 
     txt_params->set_bg_clr = 1;
-    txt_params->text_bg_clr.red = 0.0;
+    txt_params->text_bg_clr.red = 1.0;
     txt_params->text_bg_clr.green = 0.0;
     txt_params->text_bg_clr.blue = 0.0;
-    txt_params->text_bg_clr.alpha = 1.0;
+    txt_params->text_bg_clr.alpha = 0.5;
 
     nvds_add_display_meta_to_frame(frame_meta, display_meta);
   }
@@ -456,7 +483,7 @@ int main(int argc, char *argv[])
   GstPad *osd_sink_pad = NULL;
 
 #ifdef FILEIN
-  g_print("Compilado con entrada FILEIN (no tiene que estar habilitado CAMERA)");
+  g_print("Compilado con entrada FILEIN (no tiene que estar habilitado CAMERA)\n");
   /* Check input arguments */
   if (argc != 3)
   {
@@ -467,17 +494,17 @@ int main(int argc, char *argv[])
 
 
 #ifdef ENABLE_DISPLAY
-// Todavia no puse los ifs para deshabilitar el display
+// This define is not yet programmed. It won't work.
   g_print("Compilado con ENABLE_DISPLAY\nATENCIÓN SETEAR env DISPLAY!!!\n");
 #endif
 
 
 #ifdef FILEOUT
-  g_print("Compilado con salida a archivo FILEOUT");
+  g_print("Compilado con salida a archivo FILEOUT\n");
 #endif
 
 #ifdef CAMERA
-g_print("Compilado con entrada CAMERA (no tiene que estar habilitado FILEIN)");
+g_print("Compilado con entrada CAMERA (no tiene que estar habilitado FILEIN)\n");
 #ifdef FILEOUT
   /* Check input arguments */
   if (argc != 2)
@@ -613,13 +640,13 @@ g_print("Compilado con entrada CAMERA (no tiene que estar habilitado FILEIN)");
   if (!camera || !camera_caps || !camera_caps2 || !camera_conv || !pgie || !nvvidconv || !nvosd || !sink || !cap_filter || !tee || !nvvideoconvert ||
       !h264encoder || !filesink || !queue || !qtmux || !h264parser1)
   {
-    g_printerr("One element CAMERA could not be created. Exiting.\n");
+    g_printerr("One element CAMERA -with fileout enabled- could not be created. Exiting.\n");
     return -1;
   }
 #else
 if (!camera || !camera_caps || !camera_caps2 || !camera_conv || !pgie || !nvvidconv || !nvosd || !tee )
   {
-    g_printerr("One element CAMERA -no fileout- could not be created. Exiting.\n");
+    g_printerr("One element CAMERA -no fileout enabled- could not be created. Exiting.\n");
     return -1;
   }
 #endif
