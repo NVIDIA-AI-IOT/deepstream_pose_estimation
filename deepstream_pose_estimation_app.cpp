@@ -245,6 +245,16 @@ pgie_src_pad_buffer_probe(GstPad *pad, GstPadProbeInfo *info,
           int cara = objects[i][0]+objects[i][1]+objects[i][2]+objects[i][3]+objects[i][4];
           //g_print("cara %d \n",cara);
 
+          // Primero lo pongo acá para probar, luego tiene que estar dentro del loop y finalmente sólo cuando detecto algo útil
+          // Hay que hacer query al pad porque pipeline no es global.
+          // Hay que ysar ...pad_peer... porque sin el peer no funciona, devuelve siempre 0.
+          gint64 current_position;
+          gboolean ret;
+          //ret = gst_pad_peer_query_position (pad, GST_FORMAT_TIME, &current_position);
+          //if (ret) {
+          //  g_print("Position %" GST_TIME_FORMAT " \n", GST_TIME_ARGS(current_position));
+          //} else {printf("Error");}
+
           // Chequeo si esta persona tiene cara y 2 manos visibles
           int cantidad_elementos_cara=0;
           float altura_total_cara=0;
@@ -275,10 +285,16 @@ pgie_src_pad_buffer_probe(GstPad *pad, GstPadProbeInfo *info,
             g_print(" Altura promedio elementos mano %.3f\n",altura_promedio_manos);
           }
      
+          // A esto lo tengo que revisar, porque si una persona está ON y otras OFF, me queda del color
+          // de la última persona. Tendria que hacer un OR entre las distintas personas de este cuadro.
           if (altura_promedio_manos<altura_promedio_cara)
           {
              g_print(" BRAZOS ARRIBA!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
              rojo = 1.0;
+             ret = gst_pad_peer_query_position (pad, GST_FORMAT_TIME, &current_position);
+              if (ret) {
+                g_print("Position %" GST_TIME_FORMAT " \n", GST_TIME_ARGS(current_position));
+              } else {printf("Error");}
           } else { rojo = 0.0; }
 
           // Trato de buscar las coordenadas de un punto (0).
