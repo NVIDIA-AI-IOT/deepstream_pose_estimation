@@ -31,13 +31,16 @@
 // CAMERA o FILEIN son excluyentes. Hay que seleccionar una entrada o la otra.
 // Versión compilada para entrada desde cámara
 #define CAMERA
+//#undef CAMERA
 
 // Version compilada para entrada FILE
 #undef FILEIN
+//#define FILEIN
 
 // Salida a archivo mp4. Puede habilitarse o deshabilitarse independientemente de las otras opciones.
-// Me falta hacer uno igual para la salida de video.
-#undef FILEOUT
+// Me falta hacer uno igual para la salida de video. Warning, se puede habilitar FILEOUT pero el archivo no se ve.
+//#undef FILEOUT
+#define FILEOUT
 
 /* The muxer output resolution must be set if the input streams will be of
  * different resolution. The muxer will scale all the input frames to this
@@ -65,6 +68,10 @@ template <class T>
 using Vec3D = std::vector<Vec2D<T>>;
 
 gint frame_number = 0;
+
+// Un intento muy berreta (variable global) de setear el color del label en funcion de la pose
+float rojo = 0.0;
+
 
 /*Method to parse information returned from the model*/
 std::tuple<Vec2D<int>, Vec3D<float>>
@@ -209,7 +216,9 @@ pgie_src_pad_buffer_probe(GstPad *pad, GstPadProbeInfo *info,
 
         // Esto funciona, imprime guión "-" si no se detecta ese elemento o asterisco "*" si se detecta.
         // Quizás por la red que estoy usando, hay algunos falsos positivos, que claramente no tienen que ver con una persona
-        // Tengo que definir un umbral de cantidad de partes detectadas para considerar detección válida
+        // Tengo que definir un umbral de cantidad de partes detectadas para considerar detección válida. 
+        // En la práctica lo que me importa (ver mas abajo) varía según lo que quiero detectar. 
+        // Para brazos arriba elijo tener 3 o mas puntos de la cara y las 2 manos.
         g_print("Personas: %lu \n", objects.size()); 
         for (int i = 0; i < objects.size(); i++)
         {
@@ -269,7 +278,8 @@ pgie_src_pad_buffer_probe(GstPad *pad, GstPadProbeInfo *info,
           if (altura_promedio_manos<altura_promedio_cara)
           {
              g_print(" BRAZOS ARRIBA!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
-          }
+             rojo = 1.0;
+          } else { rojo = 0.0; }
 
           // Trato de buscar las coordenadas de un punto (0).
 /*
@@ -359,21 +369,22 @@ osd_sink_pad_buffer_probe(GstPad *pad, GstPadProbeInfo *info,
     NvOSD_TextParams *txt_params = &display_meta->text_params[0];
     display_meta->num_labels = 1;
     txt_params->display_text = (char *)g_malloc0(MAX_DISPLAY_LEN);
-    offset = snprintf(txt_params->display_text, MAX_DISPLAY_LEN, "TECNOX - Frame Number =  %d", frame_number);
+    offset = snprintf(txt_params->display_text, MAX_DISPLAY_LEN, "TECNOX LABS - Frame Number =  %d", frame_number);
     offset = snprintf(txt_params->display_text + offset, MAX_DISPLAY_LEN, "");
 
     txt_params->x_offset = 10;
     txt_params->y_offset = 12;
 
     txt_params->font_params.font_name = "Mono";
-    txt_params->font_params.font_size = 14;
+    txt_params->font_params.font_size = 16;
     txt_params->font_params.font_color.red = 1.0;
     txt_params->font_params.font_color.green = 1.0;
     txt_params->font_params.font_color.blue = 1.0;
     txt_params->font_params.font_color.alpha = 1.0;
 
     txt_params->set_bg_clr = 1;
-    txt_params->text_bg_clr.red = 1.0;
+    //txt_params->text_bg_clr.red = 1.0;
+    txt_params->text_bg_clr.red = rojo;
     txt_params->text_bg_clr.green = 0.0;
     txt_params->text_bg_clr.blue = 0.0;
     txt_params->text_bg_clr.alpha = 0.5;
@@ -383,7 +394,6 @@ osd_sink_pad_buffer_probe(GstPad *pad, GstPadProbeInfo *info,
   frame_number++;
   return GST_PAD_PROBE_OK;
 }
-
 
 
 static gboolean
@@ -485,9 +495,13 @@ int main(int argc, char *argv[])
 
 
 /* Add a transform element for Jetson*/
+// If DISPLAY & TEGRA
+#ifdef ENABLE_DISPLAY
 #ifdef PLATFORM_TEGRA
   GstElement *transform = NULL;
 #endif
+#endif
+
   GstBus *bus = NULL;
   guint bus_watch_id;
   GstPad *osd_sink_pad = NULL;
@@ -609,8 +623,9 @@ g_print("Compilado con entrada CAMERA (no tiene que estar habilitado FILEIN)\n")
   #endif
 
 #ifdef FILEOUT
-  strcat(output_path,"Pose_Estimation.mp4");
-  g_object_set(G_OBJECT(filesink), "location", output_path, "async", FALSE, NULL); // ojo agregue lo de async
+  strcat(output_path,"Pose_Estimation.mpeg");
+//  strcat(output_path,"Pose_Estimation.h264");
+  g_object_set(G_OBJECT(filesink), "location", output_path, "async", FALSE, NULL); // ojo agregue lo de async. Sin esto y con entrada cámara, se cuelga en el frame 0.
 #endif
   
   nvvideoconvert = gst_element_factory_make("nvvideoconvert", "nvvideo-converter1");
@@ -621,20 +636,24 @@ g_print("Compilado con entrada CAMERA (no tiene que estar habilitado FILEIN)\n")
   cap_filter = gst_element_factory_make("capsfilter", "enc_caps_filter");
   caps = gst_caps_from_string("video/x-raw(memory:NVMM), format=I420");
   g_object_set(G_OBJECT(cap_filter), "caps", caps, NULL);
-  qtmux = gst_element_factory_make("qtmux", "muxer");
+  //qtmux = gst_element_factory_make("qtmux", "muxer");
+  qtmux = gst_element_factory_make("mpegtsmux", "muxer");  // Es la que me funcionó. Algo no anda con mp4.
 #endif
 
   /* Create OSD to draw on the converted RGBA buffer */
   nvosd = gst_element_factory_make("nvdsosd", "nv-onscreendisplay");
 
   /* Finally render the osd output */
+#ifdef ENABLE_DISPLAY
 #ifdef PLATFORM_TEGRA
   transform = gst_element_factory_make("nvegltransform", "nvegl-transform");
 #endif
+
   nvsink = gst_element_factory_make("nveglglessink", "nvvideo-renderer");
   sink = gst_element_factory_make("fpsdisplaysink", "fps-display");
 
   g_object_set(G_OBJECT(sink), "text-overlay", FALSE, "video-sink", nvsink, "sync", FALSE, NULL);
+#endif // ENABLE_DISPLAY
 
 #ifdef FILEIN
   if (!source || !h264parser || !decoder || !pgie || !nvvidconv || !nvosd || !sink || !cap_filter || !tee || !nvvideoconvert ||
@@ -645,9 +664,14 @@ g_print("Compilado con entrada CAMERA (no tiene que estar habilitado FILEIN)\n")
   }
 #endif
 
+#ifdef ENABLE_DISPLAY
+if (!sink)
+{ g_printerr("Sink element could not be created. Exiting.\n"); return -1;}
+#endif
+
 #ifdef CAMERA
 #ifdef FILEOUT
-  if (!camera || !camera_caps || !camera_caps2 || !camera_conv || !pgie || !nvvidconv || !nvosd || !sink || !cap_filter || !tee || !nvvideoconvert ||
+  if (!camera || !camera_caps || !camera_caps2 || !camera_conv || !pgie || !nvvidconv || !nvosd || !cap_filter || !tee || !nvvideoconvert ||
       !h264encoder || !filesink || !queue || !qtmux || !h264parser1)
   {
     g_printerr("One element CAMERA -with fileout enabled- could not be created. Exiting.\n");
@@ -662,6 +686,7 @@ if (!camera || !camera_caps || !camera_caps2 || !camera_conv || !pgie || !nvvidc
 #endif
 #endif
 
+#ifdef ENABLE_DISPLAY
 #ifdef PLATFORM_TEGRA
   if (!transform)
   {
@@ -669,6 +694,7 @@ if (!camera || !camera_caps || !camera_caps2 || !camera_conv || !pgie || !nvvidc
     return -1;
   }
 #endif
+#endif // ENABLE DISPLAY
 
 #ifdef FILEIN
   /* we set the input filename to the source element */
@@ -693,6 +719,11 @@ if (!camera || !camera_caps || !camera_caps2 || !camera_conv || !pgie || !nvvidc
                MUXER_OUTPUT_HEIGHT, "batch-size", 1,
                "batched-push-timeout", MUXER_BATCH_TIMEOUT_USEC, 
                "live-source", TRUE, NULL);
+#endif
+
+
+#ifdef FILEOUT
+g_object_set(G_OBJECT(h264parser1), "config-interval", 1, NULL);
 #endif
 
   /* Set all the necessary properties of the nvinfer element,
@@ -722,14 +753,17 @@ if (!camera || !camera_caps || !camera_caps2 || !camera_conv || !pgie || !nvvidc
 #ifdef FILEOUT
   gst_bin_add_many(GST_BIN(pipeline),
                    camera, camera_conv, camera_caps, camera_caps2, streammux, pgie,
-                   nvvidconv, nvosd, transform, sink,
-                   tee, nvvideoconvert, h264encoder, cap_filter, filesink, queue, h264parser1, qtmux, NULL);
+                   nvvidconv, nvosd, tee, queue, nvvideoconvert, 
+                   h264encoder, cap_filter, h264parser1, qtmux, filesink, NULL);
 #else
 gst_bin_add_many(GST_BIN(pipeline),
                    camera, camera_conv, camera_caps, camera_caps2, streammux, pgie,
-                   nvvidconv, nvosd, transform, sink,
-                   tee, NULL);
+                   nvvidconv, nvosd, tee, NULL);
 #endif
+#endif
+
+#ifdef ENABLE_DISPLAY
+gst_bin_add_many(GST_BIN(pipeline),transform,sink,NULL);
 #endif
 
 #else
@@ -816,23 +850,23 @@ if (! gst_element_link(nvvidconv, nvosd))
 if (! gst_element_link(nvosd, tee))
   { g_printerr("Cannot link nvosd with tee. Exiting.\n"); return -1; }
 
-if (! gst_element_link(tee, transform))
-  { g_printerr("Cannot link tee with transform. Exiting.\n"); return -1; }
-
-if (! gst_element_link(transform, sink))
-  { g_printerr("Cannot link transform with sink. Exiting.\n"); return -1; }
-
 #else
   if (!gst_element_link_many(streammux, pgie,
                              nvvidconv, nvosd, tee, NULL))
-  { g_printerr("Elements could not be linked: 2. Exiting.\n"); return -1;
-  }
-  if (! gst_element_link(tee, transform))
+  { g_printerr("Elements could not be linked: 2. Exiting.\n"); return -1; }
+  
+#endif
+
+// Comun a FILEOUT o no FILEOUT
+#ifdef ENABLE_DISPLAY
+if (! gst_element_link(tee, transform))
   { g_printerr("Cannot link tee with transform. Exiting.\n"); return -1; }
 
   if (! gst_element_link(transform, sink))
   { g_printerr("Cannot link transform with sink. Exiting.\n"); return -1; }
+
 #endif
+
 
 #if 0
   if (!link_element_to_tee_src_pad(tee, queue)) {
@@ -845,16 +879,18 @@ if (! gst_element_link(transform, sink))
   }
 #endif
 
-#if FILEOUT
+#ifdef FILEOUT
   if (!link_element_to_tee_src_pad(tee, queue))
   {
     g_printerr("Could not link tee to nvvideoconvert\n");
     return -1;
   }
-  if (!gst_element_link_many(queue, nvvideoconvert, cap_filter, h264encoder,
-                             h264parser1, qtmux, filesink, NULL))
+  //if (!gst_element_link_many(queue, nvvideoconvert, cap_filter, h264encoder,
+  //                           h264parser1, qtmux, filesink, NULL))
+  if (!gst_element_link_many(queue, nvvideoconvert, cap_filter, h264encoder, h264parser1, qtmux, filesink, NULL))
+  
   {
-    g_printerr("Elements could not be linked\n");
+    g_printerr("Elements FILEOUT could not be linked\n");
     return -1;
   }
 #endif
@@ -884,6 +920,12 @@ if (! gst_element_link(transform, sink))
   #ifdef CAMERA
   g_print("Now playing camera input\n");
   #endif
+
+#ifdef ENABLE_DISPLAY
+g_print("Compiled with ENABLE_DISPLAY\n");
+#else
+g_print("Compiled without ENABLE_DISPLAY\n");
+#endif
 
   gst_element_set_state(pipeline, GST_STATE_PLAYING);
 
