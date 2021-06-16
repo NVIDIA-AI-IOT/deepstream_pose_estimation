@@ -6,3 +6,5 @@ html/*
 latex/*
 *.engine
 deepstream-pose-estimation-app
+Pose_Estimation.mpeg
+*.mpeg
