@@ -291,6 +291,7 @@ pgie_src_pad_buffer_probe(GstPad *pad, GstPadProbeInfo *info,
           {
              g_print(" BRAZOS ARRIBA!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
              rojo = 1.0;
+             // Query stream position to mark the highlight
              ret = gst_pad_peer_query_position (pad, GST_FORMAT_TIME, &current_position);
               if (ret) {
                 g_print("Position %" GST_TIME_FORMAT " \n", GST_TIME_ARGS(current_position));
