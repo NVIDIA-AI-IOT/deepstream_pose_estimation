@@ -296,6 +296,8 @@ pgie_src_pad_buffer_probe(GstPad *pad, GstPadProbeInfo *info,
               if (ret) {
                 g_print("Position %" GST_TIME_FORMAT " \n", GST_TIME_ARGS(current_position));
               } else {printf("Error");}
+
+              
           } else { rojo = 0.0; }
 
           // Trato de buscar las coordenadas de un punto (0).
