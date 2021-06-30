@@ -18,7 +18,7 @@ ifeq ($(TARGET_DEVICE),aarch64)
   CFLAGS:= -DPLATFORM_TEGRA
 endif
 
-SRCS:= deepstream_pose_estimation_app.cpp
+SRCS:= ../../apps-common/src/deepstream_perf.c deepstream_pose_estimation_app.cpp
 
 INCS:= $(wildcard *.h)
 
