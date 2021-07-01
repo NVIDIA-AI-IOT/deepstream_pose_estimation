@@ -473,7 +473,7 @@ link_element_to_tee_src_pad(GstElement *tee, GstElement *sinkelem)
                GST_ELEMENT_NAME(sinkelem));
     goto done;
   }
-
+ 
   if (gst_pad_link(tee_src_pad, sinkpad) != GST_PAD_LINK_OK)
   {
     g_printerr("Failed to link '%s' and '%s'", GST_ELEMENT_NAME(tee),
