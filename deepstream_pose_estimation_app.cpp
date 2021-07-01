@@ -85,7 +85,7 @@ parse_objects_from_tensor_meta(NvDsInferTensorMeta *tensor_meta)
 
   float threshold = 0.1;
   int window_size = 5;
-  int max_num_parts = 2;
+  int max_num_parts = 20;
   int num_integral_samples = 7;
   float link_threshold = 0.1;
   int max_num_objects = 100;
