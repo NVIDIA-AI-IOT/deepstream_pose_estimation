@@ -43,8 +43,8 @@
 
 // Salida a archivo mp4. Puede habilitarse o deshabilitarse independientemente de las otras opciones.
 // Me falta hacer uno igual para la salida de video. Warning, se puede habilitar FILEOUT pero el archivo no se ve.
-//#undef FILEOUT
-#define FILEOUT
+#undef FILEOUT
+//#define FILEOUT
 
 /* The muxer output resolution must be set if the input streams will be of
  * different resolution. The muxer will scale all the input frames to this
@@ -502,7 +502,7 @@ int main(int argc, char *argv[])
              *decoder = NULL, *streammux = NULL, *sink = NULL, *pgie = NULL, *nvvidconv = NULL, *nvosd = NULL,
              *nvvideoconvert = NULL, *tee = NULL, *h264encoder = NULL, *cap_filter = NULL, *filesink = NULL, *queue = NULL, *qtmux = NULL, *h264parser1 = NULL, *nvsink = NULL;
 
-  // Creo algunos elementos mas para la entrada de cámara
+  // Creo algunos elementos mas para la entrada de cámara. reuso para shmsrc, en algún momento renombrar todo a input/source.
   GstElement *camera = NULL, *camera_caps=NULL, *camera_caps2=NULL, *camera_conv=NULL;
 
 // Check for wrong settings FILEIN & CAMERA
@@ -594,9 +594,19 @@ if (!source)
     g_printerr("SHMSRC Source element could not be created. Exiting.\n");
     return -1;
   }
-shm_caps = gst_element_factory_make("capsfilter", "shmsrc_caps");
+camera_caps = gst_element_factory_make("capsfilter", "shmsrc_caps");
   caps = gst_caps_from_string("video/x-raw,width=1280,height=720,format=I420,framerate=(fraction)5/1,pixel-aspect-ratio=(fraction)1/1,interlace-mode=(string)progressive");
-  g_object_set(G_OBJECT(shm_caps), "caps", caps, NULL);
+  g_object_set(G_OBJECT(camera_caps), "caps", caps, NULL);
+
+camera_conv = gst_element_factory_make("nvvideoconvert","cameraconv");
+  if (!camera_conv)
+  {
+    g_printerr("Camera convert element could not be created. Exiting.\n");
+    return -1;
+  }
+  camera_caps2 = gst_element_factory_make("capsfilter", "camera_caps2");
+  caps2 = gst_caps_from_string("video/x-raw(memory:NVMM), width=1280, height=720,framerate=5/1, format=NV12");
+  g_object_set(G_OBJECT(camera_caps2), "caps", caps2, NULL);
 
 #endif
 
@@ -658,6 +668,14 @@ shm_caps = gst_element_factory_make("capsfilter", "shmsrc_caps");
   #endif
   #endif
 
+// si es shmsrc y está definido fileout, el archivo es el argumento 1 (y unico)
+  #ifdef SHMSRC
+  #ifdef FILEOUT
+  char *output_path = argv[1];
+  #endif
+  #endif
+
+
 #ifdef FILEOUT
   strcat(output_path,"Pose_Estimation.mpeg");
 //  strcat(output_path,"Pose_Estimation.h264");
@@ -707,7 +725,7 @@ if (!sink)
 
 #ifdef SHMSRC
 #ifdef FILEOUT
-  if (!source || !source_caps || !pgie || !nvvidconv || !nvosd || !cap_filter || !tee || !nvvideoconvert ||
+  if (!source || !camera_caps || !pgie || !nvvidconv || !nvosd || !cap_filter || !tee || !nvvideoconvert ||
       !h264encoder || !filesink || !queue || !qtmux || !h264parser1)
   {
     g_printerr("One element SHMSRC -with fileout enabled- could not be created. Exiting.\n");
@@ -715,7 +733,7 @@ if (!sink)
   }
 #else
 // esta rama no está probada
-if (!source || !source_caps || !pgie || !nvvidconv || !nvosd || !tee )
+if (!source || !camera_caps  || !camera_caps2 || !camera_conv || !pgie || !nvvidconv || !nvosd || !tee )
   {
     g_printerr("One element SHMSRC -no fileout enabled- could not be created. Exiting.\n");
     return -1;
@@ -833,12 +851,12 @@ gst_bin_add_many(GST_BIN(pipeline),
 // aca reuso elementos camera_conv y camera_caps2 a pesar de que es para shmsrc
 // camera_conv mete el pipeline en NVMM
   gst_bin_add_many(GST_BIN(pipeline),
-                   source, camera_conv, source_caps, camera_caps2, streammux, pgie,
+                   source, camera_conv, camera_caps, camera_caps2, streammux, pgie,
                    nvvidconv, nvosd, tee, queue, nvvideoconvert, 
                    h264encoder, cap_filter, h264parser1, qtmux, filesink, NULL);
 #else
 gst_bin_add_many(GST_BIN(pipeline),
-                   source, camera_conv, source_caps, camera_caps2, streammux, pgie,
+                   source, camera_conv, camera_caps, camera_caps2, streammux, pgie,
                    nvvidconv, nvosd, tee, NULL);
 #endif
 #endif
@@ -912,7 +930,7 @@ gst_bin_add_many(GST_BIN(pipeline),transform,sink,NULL);
 #endif
 
 #ifdef SHMSRC
-  if (!gst_element_link_many(source,source_caps, camera_conv, camera_caps2, NULL))
+  if (!gst_element_link_many(source, camera_caps, camera_conv, camera_caps2, NULL))
   {
     g_printerr("Source Elements SHMSRC could not be linked. Exiting.\n");
     return -1;

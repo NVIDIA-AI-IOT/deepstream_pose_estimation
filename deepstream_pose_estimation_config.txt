@@ -54,6 +54,8 @@ interval=0
 gie-unique-id=1
 model-engine-file=pose_estimation.onnx_b1_gpu0_fp16.engine
 network-type=100
-workspace-size=3000
+# esto está en 3000 por defaut porque es mucho mas rápido, pero jetson nano no tiene tanta memoria
+# hay que bajarlo a 2000 para que pueda armar el .engine
+workspace-size=2000
 
 
