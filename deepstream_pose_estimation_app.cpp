@@ -30,12 +30,16 @@
 
 // CAMERA o FILEIN son excluyentes. Hay que seleccionar una entrada o la otra.
 // Versión compilada para entrada desde cámara
-#define CAMERA
-//#undef CAMERA
+//#define CAMERA
+#undef CAMERA
 
 // Version compilada para entrada FILE
 #undef FILEIN
 //#define FILEIN
+
+// Versión compilada para entrada SHMSRC
+#define SHMSRC
+
 
 // Salida a archivo mp4. Puede habilitarse o deshabilitarse independientemente de las otras opciones.
 // Me falta hacer uno igual para la salida de video. Warning, se puede habilitar FILEOUT pero el archivo no se ve.
@@ -71,7 +75,6 @@ gint frame_number = 0;
 
 // Un intento muy berreta (variable global) de setear el color del label en funcion de la pose
 float rojo = 0.0;
-
 
 /*Method to parse information returned from the model*/
 std::tuple<Vec2D<int>, Vec3D<float>>
@@ -414,7 +417,6 @@ osd_sink_pad_buffer_probe(GstPad *pad, GstPadProbeInfo *info,
   return GST_PAD_PROBE_OK;
 }
 
-
 static gboolean
 bus_call(GstBus *bus, GstMessage *msg, gpointer data)
 {
@@ -526,7 +528,7 @@ int main(int argc, char *argv[])
   GstPad *osd_sink_pad = NULL;
 
 #ifdef FILEIN
-  g_print("Compilado con entrada FILEIN (no tiene que estar habilitado CAMERA)\n");
+  g_print("Compilado con entrada FILEIN (no tiene que estar habilitado CAMERA ni SHMSRC)\n");
   /* Check input arguments */
   if (argc != 3)
   {
@@ -535,12 +537,14 @@ int main(int argc, char *argv[])
   }
 #endif
 
+#ifdef SHMSRC
+  g_print("Compilado con entrada SHMSRC (no tiene que estar habilitado CAMERA ni FILEIN)\n");
+#endif
 
 #ifdef ENABLE_DISPLAY
 // This define is not yet programmed. It won't work.
   g_print("Compilado con ENABLE_DISPLAY\nATENCIÓN SETEAR env DISPLAY!!!\n");
 #endif
-
 
 #ifdef FILEOUT
   g_print("Compilado con salida a archivo FILEOUT\n");
@@ -582,6 +586,19 @@ g_print("Compilado con entrada CAMERA (no tiene que estar habilitado FILEIN)\n")
     /* Use nvdec_h264 for hardware accelerated decode on GPU */
     decoder = gst_element_factory_make("nvv4l2decoder", "nvv4l2-decoder");
   #endif
+
+#ifdef SHMSRC
+source = gst_element_factory_make("shmsrc", "sharedmemory-source");
+if (!source)
+  {
+    g_printerr("SHMSRC Source element could not be created. Exiting.\n");
+    return -1;
+  }
+shm_caps = gst_element_factory_make("capsfilter", "shmsrc_caps");
+  caps = gst_caps_from_string("video/x-raw,width=1280,height=720,format=I420,framerate=(fraction)5/1,pixel-aspect-ratio=(fraction)1/1,interlace-mode=(string)progressive");
+  g_object_set(G_OBJECT(shm_caps), "caps", caps, NULL);
+
+#endif
 
   #ifdef CAMERA
   //camera = gst_element_factory_make("nvv4l2camerasrc","nvv4l2camerasrc");
@@ -688,6 +705,24 @@ if (!sink)
 { g_printerr("Sink element could not be created. Exiting.\n"); return -1;}
 #endif
 
+#ifdef SHMSRC
+#ifdef FILEOUT
+  if (!source || !source_caps || !pgie || !nvvidconv || !nvosd || !cap_filter || !tee || !nvvideoconvert ||
+      !h264encoder || !filesink || !queue || !qtmux || !h264parser1)
+  {
+    g_printerr("One element SHMSRC -with fileout enabled- could not be created. Exiting.\n");
+    return -1;
+  }
+#else
+// esta rama no está probada
+if (!source || !source_caps || !pgie || !nvvidconv || !nvosd || !tee )
+  {
+    g_printerr("One element SHMSRC -no fileout enabled- could not be created. Exiting.\n");
+    return -1;
+  }
+#endif
+#endif
+
 #ifdef CAMERA
 #ifdef FILEOUT
   if (!camera || !camera_caps || !camera_caps2 || !camera_conv || !pgie || !nvvidconv || !nvosd || !cap_filter || !tee || !nvvideoconvert ||
@@ -720,6 +755,12 @@ if (!camera || !camera_caps || !camera_caps2 || !camera_conv || !pgie || !nvvidc
   g_object_set(G_OBJECT(source), "location", argv[1], NULL);
 #endif
 
+#ifdef SHMSRC
+  /* we set the socket path to the shared memory source element */
+  g_object_set(G_OBJECT(source), "socket-path", "/tmp/shmsink", NULL);
+#endif
+
+
 #ifdef CAMERA
 /* we set the input camera to the source element */
   // nvv... g_object_set(G_OBJECT(camera), "device", "/dev/video0", "bufapi-version", TRUE, NULL);
@@ -740,6 +781,12 @@ if (!camera || !camera_caps || !camera_caps2 || !camera_conv || !pgie || !nvvidc
                "live-source", TRUE, NULL);
 #endif
 
+#ifdef SHMSRC
+  g_object_set(G_OBJECT(streammux), "width", MUXER_OUTPUT_WIDTH, "height",
+               MUXER_OUTPUT_HEIGHT, "batch-size", 1,
+               "batched-push-timeout", MUXER_BATCH_TIMEOUT_USEC, 
+               "live-source", TRUE, NULL);
+#endif
 
 #ifdef FILEOUT
 g_object_set(G_OBJECT(h264parser1), "config-interval", 1, NULL);
@@ -757,9 +804,8 @@ g_object_set(G_OBJECT(h264parser1), "config-interval", 1, NULL);
 
   /* Set up the pipeline */
   /* we add all elements into the pipeline */
-#ifdef PLATFORM_TEGRA
 
-// TEGRA FILE
+// FILE
 #ifdef FILEIN
   gst_bin_add_many(GST_BIN(pipeline),
                    source, h264parser, decoder, streammux, pgie,
@@ -767,7 +813,7 @@ g_object_set(G_OBJECT(h264parser1), "config-interval", 1, NULL);
                    tee, nvvideoconvert, h264encoder, cap_filter, filesink, queue, h264parser1, qtmux, NULL);
 #endif
 
-// TEGRA CAM
+// CAM
 #ifdef CAMERA
 #ifdef FILEOUT
   gst_bin_add_many(GST_BIN(pipeline),
@@ -781,22 +827,24 @@ gst_bin_add_many(GST_BIN(pipeline),
 #endif
 #endif
 
-#ifdef ENABLE_DISPLAY
-gst_bin_add_many(GST_BIN(pipeline),transform,sink,NULL);
-#endif
-
-#else
+// SHARED MEMORY SOURCE
+#ifdef SHMSRC
 #ifdef FILEOUT
+// aca reuso elementos camera_conv y camera_caps2 a pesar de que es para shmsrc
+// camera_conv mete el pipeline en NVMM
   gst_bin_add_many(GST_BIN(pipeline),
-                   source, h264parser, decoder, streammux, pgie,
-                   nvvidconv, nvosd, /*sink,*/
-                   tee, nvvideoconvert, h264encoder, cap_filter, filesink, queue, h264parser1, qtmux, NULL);
+                   source, camera_conv, source_caps, camera_caps2, streammux, pgie,
+                   nvvidconv, nvosd, tee, queue, nvvideoconvert, 
+                   h264encoder, cap_filter, h264parser1, qtmux, filesink, NULL);
 #else
 gst_bin_add_many(GST_BIN(pipeline),
-                   source, h264parser, decoder, streammux, pgie,
-                   nvvidconv, nvosd, /*sink,*/
-                   tee, NULL);
+                   source, camera_conv, source_caps, camera_caps2, streammux, pgie,
+                   nvvidconv, nvosd, tee, NULL);
 #endif
+#endif
+
+#ifdef ENABLE_DISPLAY
+gst_bin_add_many(GST_BIN(pipeline),transform,sink,NULL);
 #endif
 
   GstPad *sinkpad, *srcpad;
@@ -828,6 +876,15 @@ gst_bin_add_many(GST_BIN(pipeline),
   }
 #endif
 
+#ifdef SHMSRC
+  srcpad = gst_element_get_static_pad(camera_caps2, pad_name_src);
+  if (!srcpad)
+  {
+    g_printerr("Compilado con SHMSRC: camera_caps2 request src pad failed. Exiting.\n");
+    return -1;
+  }
+#endif
+
   if (gst_pad_link(srcpad, sinkpad) != GST_PAD_LINK_OK)
   {
     g_printerr("Failed to link decoder/camera_caps2 to stream muxer. Exiting.\n");
@@ -841,7 +898,7 @@ gst_bin_add_many(GST_BIN(pipeline),
 #ifdef FILEIN
   if (!gst_element_link_many(source, h264parser, decoder, NULL))
   {
-    g_printerr("Source Elements FILE could not be linked: 1. Exiting.\n");
+    g_printerr("Source Elements FILE could not be linked. Exiting.\n");
     return -1;
   }
 #endif
@@ -849,7 +906,15 @@ gst_bin_add_many(GST_BIN(pipeline),
 #ifdef CAMERA
   if (!gst_element_link_many(camera,camera_caps, camera_conv, camera_caps2, NULL))
   {
-    g_printerr("Source Elements CAMERA could not be linked: 1. Exiting.\n");
+    g_printerr("Source Elements CAMERA could not be linked. Exiting.\n");
+    return -1;
+  }
+#endif
+
+#ifdef SHMSRC
+  if (!gst_element_link_many(source,source_caps, camera_conv, camera_caps2, NULL))
+  {
+    g_printerr("Source Elements SHMSRC could not be linked. Exiting.\n");
     return -1;
   }
 #endif
@@ -939,6 +1004,10 @@ if (! gst_element_link(tee, transform))
   #ifdef CAMERA
   g_print("Now playing camera input\n");
   #endif
+
+#ifdef SHMSRC
+  g_print("Now playing shared memory input\n");
+#endif
 
 #ifdef ENABLE_DISPLAY
 g_print("Compiled with ENABLE_DISPLAY\n");
