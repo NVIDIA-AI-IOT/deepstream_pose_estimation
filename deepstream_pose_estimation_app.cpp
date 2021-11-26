@@ -329,12 +329,110 @@ done:
   return ret;
 }
 
+static void
+cb_newpad2 (GstElement * decodebin, GstPad * pad, gpointer data)
+{
+  GstCaps *caps = gst_pad_query_caps (pad, NULL);
+  const GstStructure *str = gst_caps_get_structure (caps, 0);
+  const gchar *name = gst_structure_get_name (str);
+
+  if (!strncmp (name, "video", 5)) {
+      GstElement * nvvidconv = (GstElement *) data;
+      GstPad *sinkpad = gst_element_get_static_pad (nvvidconv, "sink");
+      if (gst_pad_link (pad, sinkpad) != GST_PAD_LINK_OK) {
+
+        g_printerr ("Failed to link decodebin to pipeline");
+      
+        gst_object_unref (sinkpad);
+      }
+    gst_caps_unref (caps);
+  }
+}
+
+static void
+decodebin_child_added (GstChildProxy * child_proxy, GObject * object,
+    gchar * name, gpointer user_data)
+{
+  if (g_strrstr (name, "decodebin") == name) {
+    g_signal_connect (G_OBJECT (object), "child-added",
+        G_CALLBACK (decodebin_child_added), user_data);
+  }
+
+  if (g_strstr_len (name, -1, "nvv4l2decoder") == name) {
+    g_object_set (object, "gpu-id", 0, NULL);
+    g_object_set (object, "drop-frame-interval", 0, NULL);
+  }
+}
+
+static GstElement *
+create_file_source_bin (guint index, gchar * uri)
+{
+  GstElement *bin = NULL, *src_bin = NULL, *dec_queue = NULL, *decodebin = NULL, *nvvidconv = NULL, *capfilter1 = NULL;
+  gchar bin_name[16] = { };
+  GstCaps *caps1 = NULL;
+
+  g_snprintf (bin_name, 15, "source-bin-%02d", index);
+  /* Create a source GstBin to abstract this bin's content from the rest of the
+   * pipeline */
+  bin = gst_bin_new (bin_name);
+
+  /* Source element for reading from the uri.
+   * We will use decodebin and let it figure out the container format of the
+   * stream and the codec and plug the appropriate demux and decode plugins. */
+  src_bin = gst_element_factory_make ("filesrc", "filesrc-bin");
+  dec_queue = gst_element_factory_make ("queue", "dec-queue");
+  decodebin = gst_element_factory_make ("decodebin", "decodebin-bin");
+  nvvidconv = gst_element_factory_make ("nvvideoconvert", "nvvideoconvert-elem");
+  capfilter1 = gst_element_factory_make ("capsfilter", "capsfilter-elem");
+
+  if (!bin || !src_bin || !dec_queue || !decodebin || !nvvidconv || !capfilter1) {
+    g_printerr ("One element in source bin could not be created.\n");
+    return NULL;
+  }
+
+  /* We set the input uri to the source element */
+
+  g_object_set (G_OBJECT (src_bin), "location", uri, NULL);
+  
+  caps1 = gst_caps_new_simple ("video/x-raw", "format", G_TYPE_STRING, "NV12", NULL);
+  gst_caps_set_features (caps1, 0, gst_caps_features_new ("memory:NVMM", NULL));
+  
+  g_object_set (G_OBJECT (capfilter1), "caps", caps1, NULL);
+  gst_caps_unref(caps1);
+  g_object_set (nvvidconv, "gpu-id", 0, NULL);
+
+  /* Decodebin config*/
+  g_signal_connect (G_OBJECT (decodebin), "pad-added",
+      G_CALLBACK (cb_newpad2), nvvidconv);
+  g_signal_connect (G_OBJECT (decodebin), "child-added",
+      G_CALLBACK (decodebin_child_added), bin);
+
+  gst_bin_add_many(GST_BIN(bin), src_bin, dec_queue, decodebin, nvvidconv, capfilter1, NULL);
+
+  gst_element_link(src_bin, dec_queue);
+  gst_element_link(dec_queue, decodebin);
+  gst_element_link(nvvidconv, capfilter1);
+
+  /* We need to create a ghost pad for the source bin which will act as a proxy
+   * for the video decoder src pad. The ghost pad will not have a target right
+   * now. Once the decode bin creates the video decoder and generates the
+   * cb_newpad callback, we will set the ghost pad target to the video decoder
+   * src pad. */
+  GstPad *gstpad = gst_element_get_static_pad (capfilter1, "src");
+  if (!gst_element_add_pad (bin, gst_ghost_pad_new ("src", gstpad))) {
+    g_printerr ("Failed to add ghost pad in source bin\n");
+    return NULL;
+  }
+
+done:
+  return bin;
+}
+
 int main(int argc, char *argv[])
 {
   GMainLoop *loop = NULL;
   GstCaps *caps = NULL;
-  GstElement *pipeline = NULL, *source = NULL, *h264parser = NULL,
-             *decoder = NULL, *streammux = NULL, *sink = NULL, *pgie = NULL, *nvvidconv = NULL, *nvosd = NULL,
+  GstElement *pipeline = NULL, *source = NULL, *streammux = NULL, *sink = NULL, *pgie = NULL, *nvvidconv = NULL, *nvosd = NULL,
              *nvvideoconvert = NULL, *tee = NULL, *h264encoder = NULL, *cap_filter = NULL, *filesink = NULL, *queue = NULL, *qtmux = NULL, *h264parser1 = NULL, *nvsink = NULL;
 
 /* Add a transform element for Jetson*/
@@ -361,15 +459,12 @@ int main(int argc, char *argv[])
   pipeline = gst_pipeline_new("deepstream-tensorrt-openpose-pipeline");
 
   /* Source element for reading from the file */
-  source = gst_element_factory_make("filesrc", "file-source");
+  // source = gst_element_factory_make("filesrc", "file-source");
+  source = create_file_source_bin (0,  argv[1]);
 
   /* Since the data format in the input file is elementary h264 stream,
    * we need a h264parser */
-  h264parser = gst_element_factory_make("h264parse", "h264-parser");
   h264parser1 = gst_element_factory_make("h264parse", "h264-parser1");
-
-  /* Use nvdec_h264 for hardware accelerated decode on GPU */
-  decoder = gst_element_factory_make("nvv4l2decoder", "nvv4l2-decoder");
 
   /* Create nvstreammux instance to form batches from one or more sources. */
   streammux = gst_element_factory_make("nvstreammux", "stream-muxer");
@@ -415,7 +510,7 @@ int main(int argc, char *argv[])
 
   g_object_set(G_OBJECT(sink), "text-overlay", FALSE, "video-sink", nvsink, "sync", FALSE, NULL);
 
-  if (!source || !h264parser || !decoder || !pgie || !nvvidconv || !nvosd || !sink || !cap_filter || !tee || !nvvideoconvert ||
+  if (!source || !pgie || !nvvidconv || !nvosd || !sink || !cap_filter || !tee || !nvvideoconvert ||
       !h264encoder || !filesink || !queue || !qtmux || !h264parser1)
   {
     g_printerr("One element could not be created. Exiting.\n");
@@ -430,7 +525,7 @@ int main(int argc, char *argv[])
 #endif
 
   /* we set the input filename to the source element */
-  g_object_set(G_OBJECT(source), "location", argv[1], NULL);
+  //g_object_set(G_OBJECT(source), "location", argv[1], NULL);
 
   g_object_set(G_OBJECT(streammux), "width", MUXER_OUTPUT_WIDTH, "height",
                MUXER_OUTPUT_HEIGHT, "batch-size", 1,
@@ -455,7 +550,7 @@ int main(int argc, char *argv[])
                    tee, nvvideoconvert, h264encoder, cap_filter, filesink, queue, h264parser1, qtmux, NULL);
 #else
   gst_bin_add_many(GST_BIN(pipeline),
-                   source, h264parser, decoder, streammux, pgie,
+                   source, streammux, pgie,
                    nvvidconv, nvosd, /*sink,*/
                    tee, nvvideoconvert, h264encoder, cap_filter, filesink, queue, h264parser1, qtmux, NULL);
 #endif
@@ -471,7 +566,7 @@ int main(int argc, char *argv[])
     return -1;
   }
 
-  srcpad = gst_element_get_static_pad(decoder, pad_name_src);
+  srcpad = gst_element_get_static_pad(source, pad_name_src);
   if (!srcpad)
   {
     g_printerr("Decoder request src pad failed. Exiting.\n");
@@ -487,11 +582,6 @@ int main(int argc, char *argv[])
   gst_object_unref(sinkpad);
   gst_object_unref(srcpad);
 
-  if (!gst_element_link_many(source, h264parser, decoder, NULL))
-  {
-    g_printerr("Elements could not be linked: 1. Exiting.\n");
-    return -1;
-  }
 #if 0
 #ifdef PLATFORM_TEGRA
   if (!gst_element_link_many (streammux, pgie,
