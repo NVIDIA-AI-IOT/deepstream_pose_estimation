@@ -296,7 +296,6 @@ assignment(Vec3D<float> &score_graph,
     for (Vec1D<float> &cg_iter2 : cg_iter1)
       for (float &cg_iter3 : cg_iter2)
         cg_iter3 = -cg_iter3;
-  auto &cost_graph_out_a = cost_graph;
 
   for (int k = 0; k < K; k++)
   {
@@ -305,7 +304,7 @@ assignment(Vec3D<float> &score_graph,
     int nrows = counts[cmap_a_idx];
     int ncols = counts[cmap_b_idx];
     auto star_graph = PairGraph(nrows, ncols);
-    auto &cost_graph_out_a_nk = cost_graph_out_a[k];
+    auto &cost_graph_out_a_nk = cost_graph[k];
     munkres_algorithm(cost_graph_out_a_nk, star_graph, nrows, ncols);
 
     auto &connections_a_nk = connections[k];
